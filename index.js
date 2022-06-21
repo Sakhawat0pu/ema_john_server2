@@ -46,6 +46,17 @@ async function run() {
       });
     });
 
+    app.get("/orders", async (req, res) => {
+      let query = {};
+      const email = req.query.email;
+      if (email) {
+        query = { email: email };
+      }
+      const cursor = orderCollection.find(query);
+      const orders = await cursor.toArray();
+      res.send(orders);
+    });
+
     app.post("/products/keys", async (req, res) => {
       const keys = req.body;
       const query = { key: { $in: keys } };
