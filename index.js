@@ -2,10 +2,17 @@ const { MongoClient, ServerApiVersion } = require("mongodb");
 const express = require("express");
 const cors = require("cors");
 const ObjectId = require("mongodb").ObjectId;
+var admin = require("firebase-admin");
 const app = express();
 require("dotenv").config();
 
 const port = process.env.PORT || 3000;
+
+var serviceAccount = require("./private_key.json");
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: "https://ema-john2-c122d-default-rtdb.firebaseio.com",
+});
 
 app.use(cors());
 app.use(express.json());
@@ -17,6 +24,17 @@ const client = new MongoClient(uri, {
   useUnifiedTopology: true,
   serverApi: ServerApiVersion.v1,
 });
+
+async function verifyToken(req, res, next) {
+  if (req.headers?.authorization?.startsWith("Bearer")) {
+    const token = await req.headers.authorization.split(" ")[1];
+    try {
+      const decodedUser = admin.auth().verifyIdToken(token);
+      req.decodedUserEmail = decodedUser.email;
+    } catch {}
+  }
+  next();
+}
 
 async function run() {
   try {
@@ -46,22 +64,23 @@ async function run() {
       });
     });
 
-    app.get("/orders", async (req, res) => {
-      let query = {};
-      const email = req.query.email;
-      if (email) {
-        query = { email: email };
-      }
-      const cursor = orderCollection.find(query);
-      const orders = await cursor.toArray();
-      res.send(orders);
-    });
-
     app.post("/products/keys", async (req, res) => {
       const keys = req.body;
       const query = { key: { $in: keys } };
       const products = await productCollection.find(query).toArray();
       res.json(products);
+    });
+
+    app.get("/orders", verifyToken, async (req, res) => {
+      const email = req.query.email;
+      if (email === req.decodedUserEmail) {
+        const query = { email: email };
+        const cursor = orderCollection.find(query);
+        const orders = await cursor.toArray();
+        res.send(orders);
+      } else {
+        res.status(401).json({ message: "not authorized user" });
+      }
     });
 
     app.post("/orders", async (req, res) => {
